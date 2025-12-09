@@ -3,7 +3,7 @@ set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ALARM_SUFFIX="-cloudwatch-alarm"
-SNS_TOPIC_ARN="${SNS_TOPIC_ARN:-arn:aws:sns:us-east-1:123456789012:sqs-alarm-topic}"
+SNS_TOPIC_ARN="${SNS_TOPIC_ARN:-arn:aws:sns:us-east-1:860265990835:Alternative-Monitoring-Setup-SNS-Topic}"
 ALARM_THRESHOLD="${ALARM_THRESHOLD:-5}"
 ALARM_PERIOD=60
 
