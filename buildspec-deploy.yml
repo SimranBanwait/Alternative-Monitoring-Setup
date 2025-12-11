@@ -1,0 +1,29 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Installing dependencies..."
+      - apt-get update -y
+      - apt-get install -y jq
+      - echo "AWS CLI version:"
+      - aws --version
+
+  pre_build:
+    commands:
+      - echo "Validating credentials..."
+      - aws sts get-caller-identity
+      - echo "Loading deployment plan..."
+      - ls -la
+      - cat plan.json
+
+  build:
+    commands:
+      - echo "Executing deployment..."
+      - chmod +x ./script-deploy.sh
+      - ./script-deploy.sh
+
+  post_build:
+    commands:
+      - echo "Deployment complete!"
+      - echo "Check your email for summary notification."

@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Installing dependencies..."
+      - apt-get update -y
+      - apt-get install -y jq
+      - echo "AWS CLI version:"
+      - aws --version
+
+  pre_build:
+    commands:
+      - echo "Validating credentials..."
+      - aws sts get-caller-identity
+      - echo "Current region: $AWS_REGION"
+
+  build:
+    commands:
+      - echo "Running analysis script..."
+      - chmod +x ./script-analyze.sh
+      - ./script-analyze.sh
+
+  post_build:
+    commands:
+      - echo "Analysis complete!"
+      - echo "Plan saved for deploy stage."
+
+artifacts:
+  files:
+    - plan.json
+    - script-deploy.sh
+  name: alarm-plan
