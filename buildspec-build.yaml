@@ -7,28 +7,25 @@ phases:
       - apt-get update -y
       - echo "AWS CLI version:"
       - aws --version
-      - echo "No third-party packages needed - using pure bash!"
 
   pre_build:
     commands:
       - echo "Validating credentials..."
       - aws sts get-caller-identity
-      - echo "Current region: $AWS_REGION"
+      - echo "Current region is $AWS_REGION"
 
   build:
     commands:
       - echo "Running analysis script..."
-      - chmod +x ./analyze.sh
-      - ./analyze.sh
+      - chmod +x ./script-analyze.sh
+      - ./script-analyze.sh
 
   post_build:
     commands:
       - echo "Analysis complete!"
-      - echo "Plan saved for deploy stage."
       - ls -la plan.txt
 
 artifacts:
   files:
     - plan.txt
     - deploy.sh
-  name: alarm-plan

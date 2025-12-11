@@ -7,7 +7,6 @@ phases:
       - apt-get update -y
       - echo "AWS CLI version:"
       - aws --version
-      - echo "No third-party packages needed - using pure bash!"
 
   pre_build:
     commands:
@@ -15,17 +14,14 @@ phases:
       - aws sts get-caller-identity
       - echo "Loading deployment plan..."
       - ls -la
-      - echo "=== Plan contents ==="
       - cat plan.txt
-      - echo "=== End plan ==="
 
   build:
     commands:
       - echo "Executing deployment..."
-      - chmod +x ./deploy.sh
-      - ./deploy.sh
+      - chmod +x ./script-deploy.sh
+      - ./script-deploy.sh
 
   post_build:
     commands:
       - echo "Deployment complete!"
-      - echo "Check your email for summary notification."
