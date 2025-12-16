@@ -1,11 +1,11 @@
 #!/bin/bash
-set -eo pipefail
+set -eo pipefail  # Removed 'u' flag to avoid issues with variable expansion
 
 # =====================================================================
 # Deploy Script - Deploy Stage
 # This script executes the plan created in the build stage
 # Reads: plan.txt
-# Actions: Creates and deletes CloudWatch alarms for SQS queues
+# Actions: Creates and deletes CloudWatch alarms
 # NO EXTERNAL DEPENDENCIES - Pure bash only
 # =====================================================================
 
@@ -25,12 +25,6 @@ if [[ ! -f plan.txt ]]; then
 fi
 
 log "Loading deployment plan..."
-
-# Show the plan file for debugging
-log "DEBUG: Plan file contents:"
-cat plan.txt
-log "DEBUG: End of plan file"
-log ""
 
 # Parse plan.txt
 AWS_REGION=""
@@ -54,23 +48,19 @@ done < plan.txt
 # Alarm Management
 # =====================================================================
 
-create_sqs_alarm() {
+create_alarm() {
     local queue=$1
     local alarm_name=$2
     local threshold=$3
-    local metric=$4
     
-    log "Creating SQS alarm: $alarm_name (threshold: $threshold)"
-    log "  Queue: $queue"
-    log "  Metric: $metric"
-    log "  Region: $AWS_REGION"
+    log "Creating alarm: $alarm_name (threshold: $threshold)"
     
     if aws cloudwatch put-metric-alarm \
         --region "$AWS_REGION" \
         --alarm-name "$alarm_name" \
         --alarm-description "Alarm for SQS queue $queue" \
         --namespace "AWS/SQS" \
-        --metric-name "$metric" \
+        --metric-name "ApproximateNumberOfMessagesVisible" \
         --dimensions "Name=QueueName,Value=$queue" \
         --statistic Average \
         --period "$ALARM_PERIOD" \
@@ -79,7 +69,7 @@ create_sqs_alarm() {
         --comparison-operator GreaterThanThreshold \
         --treat-missing-data notBreaching \
         --alarm-actions "$SNS_TOPIC_ARN" \
-        --ok-actions "$SNS_TOPIC_ARN" 2>&1; then
+        --ok-actions "$SNS_TOPIC_ARN" >/dev/null 2>&1; then
         log "✓ Created: $alarm_name"
         return 0
     else
@@ -95,7 +85,7 @@ delete_alarm() {
     
     if aws cloudwatch delete-alarms \
         --region "$AWS_REGION" \
-        --alarm-names "$alarm_name" 2>&1; then
+        --alarm-names "$alarm_name" >/dev/null 2>&1; then
         log "✓ Deleted: $alarm_name"
         return 0
     else
@@ -120,24 +110,20 @@ main() {
     local created=0
     local deleted=0
     local failed=0
-    local skipped=0
     
     # Parse plan and execute
     local section=""
-    local line_number=0
     
     while IFS= read -r line || [ -n "$line" ]; do
-        line_number=$((line_number + 1))
-        
         # Skip config lines
-        if [[ "$line" == REGION=* ]] || [[ "$line" == ALARM_SUFFIX=* ]] || [[ "$line" == CREATE_COUNT=* ]] || [[ "$line" == DELETE_COUNT=* ]]; then
-            continue
-        fi
+        [[ "$line" == REGION=* ]] && continue
+        [[ "$line" == ALARM_SUFFIX=* ]] && continue
+        [[ "$line" == CREATE_COUNT=* ]] && continue
+        [[ "$line" == DELETE_COUNT=* ]] && continue
         
         # Track sections
         if [[ "$line" == "---CREATE---" ]]; then
             section="create"
-            log "DEBUG: Entering CREATE section at line $line_number"
             if [[ "$CREATE_COUNT" -gt 0 ]]; then
                 log "Phase 1: Creating Alarms"
                 log "----------------------------------------"
@@ -145,7 +131,6 @@ main() {
             continue
         elif [[ "$line" == "---DELETE---" ]]; then
             section="delete"
-            log "DEBUG: Entering DELETE section at line $line_number"
             if [[ "$DELETE_COUNT" -gt 0 ]]; then
                 log ""
                 log "Phase 2: Deleting Orphaned Alarms"
@@ -153,53 +138,25 @@ main() {
             fi
             continue
         elif [[ "$line" == "---SUMMARY---" ]]; then
-            log "DEBUG: Reached SUMMARY section at line $line_number"
             break
         fi
         
         # Skip empty lines
-        if [[ -z "$line" ]]; then
-            log "DEBUG: Skipping empty line $line_number"
-            continue
-        fi
+        [[ -z "$line" ]] && continue
         
         # Execute actions
         if [[ "$section" == "create" ]]; then
-            log "DEBUG: Processing CREATE line $line_number: $line"
-            
-            # Format: RESOURCE_TYPE|RESOURCE_NAME|ALARM_NAME|THRESHOLD|METRIC
-            IFS='|' read -r resource_type resource_name alarm_name threshold metric <<< "$line"
-            
-            log "DEBUG: Parsed values:"
-            log "  resource_type='$resource_type'"
-            log "  resource_name='$resource_name'"
-            log "  alarm_name='$alarm_name'"
-            log "  threshold='$threshold'"
-            log "  metric='$metric'"
-            
-            # Validate all fields are present
-            if [[ -z "$resource_type" ]] || [[ -z "$resource_name" ]] || [[ -z "$alarm_name" ]] || [[ -z "$threshold" ]] || [[ -z "$metric" ]]; then
-                log "⚠ Skipping invalid line (missing fields): $line"
-                continue
-            fi
-            
-            # Only process SQS alarms
-            if [[ "$resource_type" == "SQS" ]]; then
-                log "DEBUG: Processing SQS alarm"
-                if create_sqs_alarm "$resource_name" "$alarm_name" "$threshold" "$metric"; then
+            # Format: queue|alarm|threshold
+            IFS='|' read -r queue alarm threshold <<< "$line"
+            if [[ -n "$queue" && -n "$alarm" && -n "$threshold" ]]; then
+                if create_alarm "$queue" "$alarm" "$threshold"; then
                     created=$((created + 1))
                 else
                     failed=$((failed + 1))
                 fi
-            else
-                log "⚠ Skipping non-SQS resource: $resource_type - $resource_name"
-                skipped=$((skipped + 1))
             fi
-            
         elif [[ "$section" == "delete" ]]; then
-            log "DEBUG: Processing DELETE line $line_number: $line"
-            
-            # Format: ALARM_NAME
+            # Format: alarm_name
             if [[ -n "$line" ]]; then
                 if delete_alarm "$line"; then
                     deleted=$((deleted + 1))
@@ -207,8 +164,6 @@ main() {
                     failed=$((failed + 1))
                 fi
             fi
-        else
-            log "DEBUG: Not in any section, line $line_number: $line"
         fi
     done < plan.txt
     
@@ -219,13 +174,10 @@ main() {
     log "✓ Alarms created:  $created"
     log "✗ Alarms deleted:  $deleted"
     log "⚠ Failed operations: $failed"
-    if [[ $skipped -gt 0 ]]; then
-        log "→ Skipped (non-SQS): $skipped"
-    fi
     log "=========================================="
     
     # Send notification
-    send_notification "$created" "$deleted" "$failed" "$skipped"
+    send_notification "$created" "$deleted" "$failed"
     
     # Exit with success even if some operations failed (unless all failed)
     local total_operations=$((CREATE_COUNT + DELETE_COUNT))
@@ -242,7 +194,6 @@ send_notification() {
     local created=$1
     local deleted=$2
     local failed=$3
-    local skipped=$4
     
     local message="SQS Alarm Deployment Complete
 
@@ -252,14 +203,7 @@ Timestamp: $(date '+%Y-%m-%d %H:%M:%S')
 Results:
 ✓ Created: $created
 ✗ Deleted: $deleted
-⚠ Failed: $failed"
-
-    if [[ $skipped -gt 0 ]]; then
-        message+="
-→ Skipped (non-SQS): $skipped"
-    fi
-
-    message+="
+⚠ Failed: $failed
 
 Pipeline execution completed successfully."
     
