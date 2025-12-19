@@ -34,7 +34,6 @@ This system automatically manages CloudWatch alarms for your SQS queues:
 
 ## 📊 Architecture
 
-![Architecture Diagram](screenshots/architecture-overview.png)
 
 ```
 SQS Queue Created/Deleted
@@ -107,6 +106,8 @@ DEPLOY STAGE: script-deploy.sh
 4. Create trail
 
 ![CloudTrail Setup](screenshots/cloudtrail-create.png)
+![image alt](https://github.com/SimranBanwait/Automated-CloudWatch-Alarm-Management/blob/4d3a0424d5ed4af52dcdbcc1761a4b9f3335fd80/assets/6-Cloudtrail.png)
+
 
 **Cost:** FREE (first trail with management events)
 
